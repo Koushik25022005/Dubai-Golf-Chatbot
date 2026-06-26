@@ -8,9 +8,12 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from frontend.database import save_message, get_messages, save_feedback, get_all_sessions, delete_session
 from dotenv import load_dotenv
 
+
 # ---- LOADING ENVIRONEMNT VARIABLES ------
 load_dotenv('/Users/koushik/ts_chat/.env', override=True)
 
+for key, value in st.secrets.items():
+    os.environ.setdefault(key, str(value))
 # --- CLIENT AUTHENTICATION --- #
 openrouter_client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
