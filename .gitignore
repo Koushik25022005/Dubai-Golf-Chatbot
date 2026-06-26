@@ -216,9 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-knowledge_base/chroma_db/
-knowledge_base/*.db
-data_ingestion/*.jsonl
 *.pkl
 *.db
 model_training/lora_model/
