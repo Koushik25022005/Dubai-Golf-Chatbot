@@ -16,10 +16,7 @@ openrouter_client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key= os.environ.get('TS_CHAT_OPENROUTER_API_KEY')   
         )
-ollama_client = OpenAI(
-        base_url=os.environ.get('OLLAMA_BASE_URL'),
-        api_key="ollama"
-    )
+
 # --- PASSWORD PROTECTION ---
 def check_password():
     """Returns `True` if the user had the correct password."""
