@@ -112,6 +112,17 @@ for msg in messages:
 
 from knowledge_base.vector_db_onnx_bm25 import HybridSearchKnowledgeBase
 
+CHROMA_DIR = "knowledge_base/chroma_db"
+DB_URL = "https://github.com/Koushik25022005/Dubai-Golf-Chatbot/releases/download/kb-v1/chroma_db.zip"
+ 
+if not os.path.exists(CHROMA_DIR):
+    with st.spinner("Setting up knowledge base, this may take a moment..."):
+        zip_path = "chroma_db.zip"
+        urllib.request.urlretrieve(DB_URL, zip_path)
+        with zipfile.ZipFile(zip_path, "r") as z:
+            z.extractall("knowledge_base")
+        os.remove(zip_path)
+
 @st.cache_resource
 def get_knowledge_base():
     try:
