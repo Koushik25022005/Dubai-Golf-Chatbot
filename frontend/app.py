@@ -2,6 +2,8 @@ import streamlit as st
 import uuid
 import sys
 import os
+import zipfile
+import urllib.request
 from openai import OpenAI
 # Add parent dir to path to import knowledge base if needed
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
