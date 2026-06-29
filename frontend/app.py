@@ -21,7 +21,10 @@ openrouter_client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key= os.environ.get('TS_CHAT_OPENROUTER_API_KEY')   
         )
-
+hf_client = OpenAI(
+        base_url="https://router.huggingface.co/v1"
+        api_key=os.environ.get('HF_TOKEN')
+    )
 # --- PASSWORD PROTECTION ---
 def check_password():
     """Returns `True` if the user had the correct password."""
@@ -57,7 +60,7 @@ with st.sidebar:
     st.header("Settings")
     model_choice = st.selectbox(
             "Model Selection",
-            ["openai/gpt-oss-20b:free", "openai/gpt-oss-120b:free"]
+            ["openai/gpt-oss-20b:free", "deepseek-ai/DeepSeek-V4-Pro:novita"]
         )
     response_style = st.selectbox("Response Style", ["Brief", "Detailed"])
     
@@ -171,13 +174,22 @@ if prompt := st.chat_input("How may I help you ?"):
 
         # Call the OpenRouter API
         try:
-            response = openrouter_client.chat.completions.create(
-                    model=model_choice,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content}
-                        ]
-                )
+            if model_choice == "openai/gpt-oss-20b:free"
+                response = openrouter_client.chat.completions.create(
+                        model=model_choice,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_content}
+                            ]
+                    )
+            else:
+                response = hf_client.chat.completions.create(
+                        model=model_choice,
+                        messages = [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_content}
+                            ]
+                    )
             response_text = response.choices[0].message.content
         except Exception as e:
             response_text = f"❌ Error communicating with OpenRouter: {e}"
