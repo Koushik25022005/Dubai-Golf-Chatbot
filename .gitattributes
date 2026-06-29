@@ -1,5 +1,6 @@
 *.zip filter=lfs diff=lfs -text
 *.sqlite3 filter=lfs diff=lfs merge=lfs -text
+*.jsonl filter=lfs diff=lfs merge=lfs -text
 knwoledge_base/chroma_db/chroma.sqlite3 filter=lfs diff=lfs merge=lfs -text
 knowledge_base/chroma_db/chroma.sqlite3 filter=lfs diff=lfs merge=lfs -text
 data_ingestion/raw_data.jsonl filter=lfs diff=lfs merge=lfs -text
