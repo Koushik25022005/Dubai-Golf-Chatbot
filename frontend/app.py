@@ -22,7 +22,7 @@ openrouter_client = OpenAI(
         api_key= os.environ.get('TS_CHAT_OPENROUTER_API_KEY')   
         )
 hf_client = OpenAI(
-        base_url="https://router.huggingface.co/v1"
+        base_url="https://router.huggingface.co/v1",
         api_key=os.environ.get('HF_TOKEN')
     )
 # --- PASSWORD PROTECTION ---
