@@ -174,7 +174,7 @@ if prompt := st.chat_input("How may I help you ?"):
 
         # Call the OpenRouter API
         try:
-            if model_choice == "openai/gpt-oss-20b:free"
+            if model_choice == "openai/gpt-oss-20b:free":
                 response = openrouter_client.chat.completions.create(
                         model=model_choice,
                         messages=[
