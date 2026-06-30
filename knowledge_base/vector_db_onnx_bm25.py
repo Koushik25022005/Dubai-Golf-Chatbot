@@ -33,7 +33,7 @@ DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data_inges
 BM25_STATE_PATH = os.path.join(os.path.dirname(__file__), "bm25_state.pkl")
 
 
-def chunk_text(text, chunk_size=500, overlap=50):
+def chunk_text(text, chunk_size=2000, overlap=50):
     """Simple character-based chunker with overlap. Chunking is pure text
     splitting -- it never needed torch or faiss, so this has no native
     dependencies at all, on any CPU."""
@@ -100,7 +100,7 @@ class HybridSearchKnowledgeBase:
             return
 
         print(f"Adding {len(documents)} documents to ChromaDB (ONNX embeddings)...")
-        batch_size = 5000
+        batch_size = 2000
         for i in range(0, len(documents), batch_size):
             self.collection.add(
                 documents=documents[i:i + batch_size],
