@@ -2,8 +2,6 @@ import streamlit as st
 import uuid
 import sys
 import os
-import zipfile
-import urllib.request
 from openai import OpenAI
 # Add parent dir to path to import knowledge base if needed
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -118,20 +116,15 @@ for msg in messages:
 from knowledge_base.vector_db_onnx_bm25 import HybridSearchKnowledgeBase
 
 CHROMA_DIR = "knowledge_base/chroma_db"
-CHROMA_DB_FILE = os.path.join(CHROMA_DIR, "chroma.sqlite3")
-DB_URL = "https://github.com/Koushik25022005/Dubai-Golf-Chatbot/releases/download/kb-v1/chroma_db.zip"
-
-if not os.path.exists(CHROMA_DB_FILE):
-    with st.spinner("Setting up knowledge base, this may take a moment..."):
-        os.makedirs(CHROMA_DIR, exist_ok=True)
-        zip_path = "chroma_db.zip"
-        urllib.request.urlretrieve(DB_URL, zip_path)
-        with zipfile.ZipFile(zip_path, "r") as z:
-            z.extractall("knowledge_base")
-        os.remove(zip_path)
 
 @st.cache_resource
 def get_knowledge_base():
+    if not os.path.exists(CHROMA_DIR):
+        st.error(
+            "Knowledge base folder not found. Make sure knowledge_base/chroma_db "
+            "is committed to the repo (e.g. via Git LFS)."
+        )
+        st.stop()
     try:
         return HybridSearchKnowledgeBase()
     except Exception as e:
