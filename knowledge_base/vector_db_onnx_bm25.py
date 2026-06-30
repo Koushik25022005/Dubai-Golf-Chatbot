@@ -2,6 +2,7 @@ import os
 import re
 import json
 import pickle
+from itertools import zip_longest
 
 import onnxruntime as ort
 
@@ -88,9 +89,11 @@ class HybridSearchKnowledgeBase:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 data = json.loads(line)
-                documents.append(data["text"])
-                metadatas.append({"url": data["url"]})
-                ids.append(data["chunk_id"])
+                chunks = chunk_text(data["text"])
+                for i, chunk in enumerate(chunks):
+                    documents.append(chunk)
+                    metadatas.append({"url": data["url"]})
+                    ids.append(f"{data['chunk_id']}_{i}")
 
         if not documents:
             print("No documents to index.")
@@ -137,17 +140,21 @@ class HybridSearchKnowledgeBase:
             tokenized_query = query.lower().split()
             scores = self.bm25.get_scores(tokenized_query)
             top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
+            MIN_BM25_SCORE = 0.5  # filters out near-zero / no-overlap matches
             for idx in top_indices:
-                doc_id = self.bm25_corpus_ids[idx]
-                sparse_docs.append(self.document_map[doc_id]["text"])
+                if scores[idx] > MIN_BM25_SCORE:
+                    doc_id = self.bm25_corpus_ids[idx]
+                    sparse_docs.append(self.document_map[doc_id]["text"])
 
-        # Hybrid fusion (simple concatenation & deduplication)
+        # Hybrid fusion (interleaved, so sparse matches aren't crowded out
+        # by dense results when top_k is small)
         combined_results = []
         seen = set()
-        for doc in dense_docs + sparse_docs:
-            if doc not in seen:
-                seen.add(doc)
-                combined_results.append(doc)
+        for dense_doc, sparse_doc in zip_longest(dense_docs, sparse_docs):
+            for doc in (dense_doc, sparse_doc):
+                if doc is not None and doc not in seen:
+                    seen.add(doc)
+                    combined_results.append(doc)
 
         return combined_results[:top_k]
 
@@ -155,3 +162,4 @@ class HybridSearchKnowledgeBase:
 if __name__ == "__main__":
     kb = HybridSearchKnowledgeBase()
     kb.build_index()
+
