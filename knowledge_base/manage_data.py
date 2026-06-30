@@ -220,20 +220,28 @@ def import_from_pdf(input_pdf_path, rebuild_index=True):
     ).strip("_")
 
     rows = []
+    ocr_page_images = None  # lazily converted once, only if actually needed
+
     with pdfplumber.open(input_pdf_path) as pdf:
         for page_index, page in enumerate(pdf.pages):
             text = page.extract_text() or ""
 
             if len(text.strip()) < min_chars_before_ocr_fallback:
-                # Likely a scanned page with no usable text layer --
-                # rasterize just this page and OCR it.
-                images = convert_from_path(
-                    input_pdf_path,
-                    dpi=ocr_dpi,
-                    first_page=page_index + 1,
-                    last_page=page_index + 1,
-                )
-                text = pytesseract.image_to_string(images[0], lang=ocr_lang) if images else ""
+                # Likely a scanned page with no usable text layer.
+                # Convert the WHOLE pdf to images exactly once, the first
+                # time OCR is actually needed -- pdf2image/Poppler has no
+                # way to keep a document "open" across calls, so calling
+                # convert_from_path() per page (even with first_page/
+                # last_page set) re-parses the entire PDF from scratch on
+                # every page that needs OCR. For a long scanned PDF that's
+                # O(n^2) work and looks like an infinite hang. Doing it
+                # once up front and indexing into the result is O(n).
+                if ocr_page_images is None:
+                    ocr_page_images = convert_from_path(input_pdf_path, dpi=ocr_dpi)
+                if page_index < len(ocr_page_images):
+                    text = pytesseract.image_to_string(
+                        ocr_page_images[page_index], lang=ocr_lang
+                    )
 
             if not text.strip():
                 continue
