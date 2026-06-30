@@ -60,7 +60,7 @@ with st.sidebar:
     st.header("Settings")
     model_choice = st.selectbox(
             "Model Selection",
-            ["openai/gpt-oss-20b:free", "Qwen/Qwen3-Next-80B-A3B-Thinking"]
+            ["openai/gpt-oss-20b:free", "cohere/north-mini-code:free","Qwen/Qwen3-Next-80B-A3B-Thinking"]
         )
     response_style = st.selectbox("Response Style", ["Brief", "Detailed"])
     
@@ -174,7 +174,7 @@ if prompt := st.chat_input("How may I help you ?"):
 
         # Call the OpenRouter API
         try:
-            if model_choice == "openai/gpt-oss-20b:free":
+            if model_choice == "openai/gpt-oss-20b:free" or model_choice == "cohere/north-mini-code:free":
                 response = openrouter_client.chat.completions.create(
                         model=model_choice,
                         messages=[
