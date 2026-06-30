@@ -60,7 +60,7 @@ with st.sidebar:
     st.header("Settings")
     model_choice = st.selectbox(
             "Model Selection",
-            ["openai/gpt-oss-20b:free", "deepseek-ai/DeepSeek-V4-Pro:novita"]
+            ["openai/gpt-oss-20b:free", "Qwen/Qwen3-Next-80B-A3B-Thinking"]
         )
     response_style = st.selectbox("Response Style", ["Brief", "Detailed"])
     
