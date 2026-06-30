@@ -3,6 +3,5 @@
 *.jsonl filter=lfs diff=lfs merge=lfs -text
 knwoledge_base/chroma_db/chroma.sqlite3 filter=lfs diff=lfs merge=lfs -text
 knowledge_base/chroma_db/chroma.sqlite3 filter=lfs diff=lfs merge=lfs -text
-data_ingestion/raw_data.jsonl filter=lfs diff=lfs merge=lfs -text
-data_ingestion/cleaned_data.jsonl filter=lfs diff=lfs merge=lfs -text
 knowledge_base/chroma_db.zip filter=lfs diff=lfs merge=lfs -text
+data_ingestion/raw_data.jsonl,data_ingestion/cleaned_data.jsonl filter=lfs diff=lfs merge=lfs -text
