@@ -10,18 +10,17 @@ from knowledge_base.manage_data import (
     import_from_sqlite,
     import_from_pdf,
     import_from_csv,
-    rebuild_knowledge_base
+    import_from_txt,
+    rebuild_knowledge_base,
 )
 
 st.set_page_config(page_title="Admin Panel", page_icon="⚙️")
 
 st.title("⚙️ Admin Dashboard")
 
-# Initialize session state for admin auth
 if "admin_authenticated" not in st.session_state:
     st.session_state["admin_authenticated"] = False
 
-# Login Form
 if not st.session_state["admin_authenticated"]:
     st.subheader("Admin Login")
     with st.form("admin_login"):
@@ -37,7 +36,6 @@ if not st.session_state["admin_authenticated"]:
             else:
                 st.error("Invalid username or password.")
 else:
-    # Admin Dashboard
     st.write("You have access to manage the knowledge base.")
 
     if st.button("Logout"):
@@ -63,7 +61,7 @@ else:
                     label="📥 Download SQLite DB",
                     data=file,
                     file_name="knowledge_base_editable.db",
-                    mime="application/octet-stream"
+                    mime="application/octet-stream",
                 )
     except Exception as e:
         st.error(f"Error preparing download: {e}")
@@ -71,9 +69,16 @@ else:
     st.divider()
 
     st.subheader("2. Upload Knowledge Base")
-    st.write("Upload your modified SQLite file(s), PDFs, or CSVs to update the chatbot's knowledge. **Warning: New records will be appended. The vector index will be rebuilt automatically.**")
+    st.write(
+        "Upload SQLite DB, PDF, CSV, or TXT files to update the chatbot's knowledge. "
+        "**New records are appended; the vector index rebuilds automatically after all files are processed.**"
+    )
 
-    uploaded_files = st.file_uploader("Upload files", type=['db', 'sqlite', 'pdf', 'csv'], accept_multiple_files=True)
+    uploaded_files = st.file_uploader(
+        "Upload files",
+        type=["db", "sqlite", "pdf", "csv", "txt"],
+        accept_multiple_files=True,
+    )
 
     if uploaded_files:
         if st.button("Apply Changes & Rebuild Index"):
@@ -82,29 +87,33 @@ else:
                     for uploaded_file in uploaded_files:
                         ext = os.path.splitext(uploaded_file.name)[1].lower()
                         original_name = os.path.basename(uploaded_file.name)
-                        temp_path = os.path.join(os.path.dirname(__file__), f"uploaded_kb_{original_name}")
+                        temp_path = os.path.join(
+                            os.path.dirname(__file__), f"uploaded_kb_{original_name}"
+                        )
 
                         with open(temp_path, "wb") as f:
                             f.write(uploaded_file.getbuffer())
 
                         try:
-                            # rebuild_index=False on every branch -- we only
-                            # want to rebuild once, after the whole batch is
-                            # processed, not after every individual file.
+                            # rebuild_index=False on every branch -- rebuild
+                            # once at the end after all files are processed.
                             if ext in (".db", ".sqlite"):
                                 import_from_sqlite(temp_path, rebuild_index=False)
                             elif ext == ".pdf":
                                 import_from_pdf(temp_path, rebuild_index=False)
                             elif ext == ".csv":
                                 import_from_csv(temp_path, rebuild_index=False)
+                            elif ext == ".txt":
+                                import_from_txt(temp_path, rebuild_index=False)
                             else:
                                 raise ValueError(f"Unsupported file type: {ext}")
                         finally:
                             if os.path.exists(temp_path):
                                 os.remove(temp_path)
 
-                    # After all files are processed, rebuild the vector index once
                     rebuild_knowledge_base()
-                    st.success("Knowledge Base successfully updated and re-indexed with all uploaded files!")
+                    st.success(
+                        "Knowledge Base successfully updated and re-indexed with all uploaded files!"
+                    )
                 except Exception as e:
                     st.error(f"Error updating knowledge base: {e}")

@@ -4,6 +4,7 @@ import sqlite3
 import shutil
 import csv
 import re
+import hashlib
 
 import streamlit as st
 
@@ -35,54 +36,25 @@ def _invalidate_cached_kb():
         pass
 
 
-def export_to_sqlite(output_db_path):
-    """
-    Reads cleaned_data.jsonl and exports it to an SQLite database so admins can easily edit it.
-    """
-    if not os.path.exists(JSONL_FILE):
-        raise FileNotFoundError(f"Source data {JSONL_FILE} not found.")
+def _chunk_text(text, chunk_size=500, overlap=50):
+    """Shared character-based chunker used by all import functions."""
+    text = re.sub(r"\s+", " ", text).strip()
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end])
+        start = end - overlap
+        if end >= len(text):
+            break
+    return chunks
 
-    # Create a new SQLite database
-    if os.path.exists(output_db_path):
-        os.remove(output_db_path)
-        
-    conn = sqlite3.connect(output_db_path)
-    cursor = conn.cursor()
-    
-    # Create table
-    cursor.execute('''
-        CREATE TABLE knowledge (
-            chunk_id TEXT PRIMARY KEY,
-            url TEXT,
-            text TEXT
-        )
-    ''')
-    
-    # Insert data
-    with open(JSONL_FILE, 'r', encoding='utf-8') as f:
-        for line in f:
-            data = json.loads(line)
-            cursor.execute(
-                'INSERT INTO knowledge (chunk_id, url, text) VALUES (?, ?, ?)',
-                (data.get("chunk_id"), data.get("url"), data.get("text"))
-            )
-            
-    conn.commit()
-    conn.close()
-    return output_db_path
 
-def import_from_sqlite(input_db_path, rebuild_index=True):
-    """
-    Reads the uploaded SQLite database, and appends new records to cleaned_data.jsonl,
-    clears the vector database, and optionally triggers a rebuild.
-    """
-    if not os.path.exists(input_db_path):
-        raise FileNotFoundError(f"Uploaded DB {input_db_path} not found.")
-        
-    # Load existing chunk_ids to avoid duplicates when appending
+def _load_existing_ids():
+    """Return the set of chunk_ids already present in cleaned_data.jsonl."""
     existing_ids = set()
     if os.path.exists(JSONL_FILE):
-        with open(JSONL_FILE, 'r', encoding='utf-8') as f:
+        with open(JSONL_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 try:
                     data = json.loads(line)
@@ -90,80 +62,108 @@ def import_from_sqlite(input_db_path, rebuild_index=True):
                         existing_ids.add(data["chunk_id"])
                 except json.JSONDecodeError:
                     pass
-                    
+    return existing_ids
+
+
+def export_to_sqlite(output_db_path):
+    """
+    Reads cleaned_data.jsonl and exports it to an SQLite database so admins can easily edit it.
+    """
+    if not os.path.exists(JSONL_FILE):
+        raise FileNotFoundError(f"Source data {JSONL_FILE} not found.")
+
+    if os.path.exists(output_db_path):
+        os.remove(output_db_path)
+
+    conn = sqlite3.connect(output_db_path)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        CREATE TABLE knowledge (
+            chunk_id TEXT PRIMARY KEY,
+            url TEXT,
+            text TEXT
+        )
+    ''')
+
+    with open(JSONL_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            data = json.loads(line)
+            cursor.execute(
+                "INSERT INTO knowledge (chunk_id, url, text) VALUES (?, ?, ?)",
+                (data.get("chunk_id"), data.get("url"), data.get("text")),
+            )
+
+    conn.commit()
+    conn.close()
+    return output_db_path
+
+
+def import_from_sqlite(input_db_path, rebuild_index=True):
+    """
+    Reads the uploaded SQLite database, appends new records to cleaned_data.jsonl,
+    and optionally triggers a rebuild.
+    """
+    if not os.path.exists(input_db_path):
+        raise FileNotFoundError(f"Uploaded DB {input_db_path} not found.")
+
+    existing_ids = _load_existing_ids()
+
     conn = sqlite3.connect(input_db_path)
     cursor = conn.cursor()
-    
-    cursor.execute('SELECT url, chunk_id, text FROM knowledge')
+    cursor.execute("SELECT url, chunk_id, text FROM knowledge")
     rows = cursor.fetchall()
-    
-    # Append to the jsonl file
+    conn.close()
+
     new_records_added = 0
-    with open(JSONL_FILE, 'a', encoding='utf-8') as f:
+    with open(JSONL_FILE, "a", encoding="utf-8") as f:
         for row in rows:
             chunk_id = row[1]
             if chunk_id not in existing_ids:
-                data = {
-                    "url": row[0],
-                    "chunk_id": chunk_id,
-                    "text": row[2]
-                }
-                f.write(json.dumps(data) + "\n")
+                f.write(json.dumps({"url": row[0], "chunk_id": chunk_id, "text": row[2]}) + "\n")
                 existing_ids.add(chunk_id)
                 new_records_added += 1
-            
-    conn.close()
-    
-    # Only rebuild if there were actually new records appended and rebuild_index is True
+
     if new_records_added > 0 and rebuild_index:
         rebuild_knowledge_base()
-    
+
     return new_records_added
+
 
 def rebuild_knowledge_base():
     """Wipes the existing vector indexes and rebuilds them from cleaned_data.jsonl."""
     from knowledge_base.vector_db_onnx_bm25 import HybridSearchKnowledgeBase
     kb = HybridSearchKnowledgeBase()
-    
+
     try:
         kb.chroma_client.delete_collection("dubaigolf_knowledge")
     except ValueError:
-        pass # Collection might not exist
-        
-    # Re-create the collection to ensure it's empty
+        pass
+
     kb.collection = kb.chroma_client.get_or_create_collection(
         name="dubaigolf_knowledge",
         embedding_function=kb.embedding_func,
     )
-    
+
     if os.path.exists(BM25_STATE_PATH):
         try:
             os.remove(BM25_STATE_PATH)
         except OSError:
             pass
-            
-    # Rebuild index
-    kb.build_index()
 
-    # Force the chat page's cached HybridSearchKnowledgeBase to reload --
-    # otherwise it keeps using a PersistentClient pointed at the
-    # collection we just deleted/recreated above, and the next query
-    # through it throws SQLite error 1032 (readonly db moved).
+    kb.build_index()
     _invalidate_cached_kb()
 
 
 def _clear_vector_index():
-    """Shared by import_from_pdf/import_from_csv: wipe the existing vector
-    index and BM25 state so the next build_index() starts clean. (Same
-    two checks import_from_sqlite does inline above.)"""
     from knowledge_base.vector_db_onnx_bm25 import HybridSearchKnowledgeBase
     kb = HybridSearchKnowledgeBase()
-    
+
     try:
         kb.chroma_client.delete_collection("dubaigolf_knowledge")
     except ValueError:
         pass
-        
+
     if os.path.exists(BM25_STATE_PATH):
         try:
             os.remove(BM25_STATE_PATH)
@@ -175,23 +175,116 @@ def _rebuild_vector_index():
     from knowledge_base.vector_db_onnx_bm25 import HybridSearchKnowledgeBase
     kb = HybridSearchKnowledgeBase()
     kb.build_index()
-
-    # Same reasoning as in rebuild_knowledge_base() -- invalidate the
-    # chat page's cached instance so it doesn't hold a stale client.
     _invalidate_cached_kb()
+
+
+def import_from_txt(input_txt_path, rebuild_index=True):
+    """
+    Parses a scraped-text file in the format produced by the Dubai Golf
+    crawler:
+
+        # https://dubaigolf.com/some/page/
+        Page body text all on one line (or a few lines) ...
+
+        # https://dubaigolf.com/another/page/
+        ...
+
+    Each `# <url>` line starts a new page section. The body text that
+    follows (up to the next `#` header or EOF) is cleaned, chunked, and
+    appended to cleaned_data.jsonl.
+
+    Duplicate URL+content combinations are skipped via a content hash so
+    re-running after adding more PDFs/pages doesn't bloat the jsonl.
+    The same chunk_id deduplication used by the other importers is also
+    applied, so it's safe to call multiple times.
+    """
+    if not os.path.exists(input_txt_path):
+        raise FileNotFoundError(f"Uploaded TXT {input_txt_path} not found.")
+
+    # --- Parse into (url, body_text) sections ----------------------------
+    sections = []          # list of (url, raw_text)
+    current_url = None
+    current_lines = []
+
+    with open(input_txt_path, "r", encoding="utf-8") as f:
+        for line in f:
+            stripped = line.rstrip("\n")
+            if stripped.startswith("# http"):
+                # Save previous section if it had content
+                if current_url and current_lines:
+                    sections.append((current_url, " ".join(current_lines)))
+                current_url = stripped[2:].strip()   # drop "# "
+                current_lines = []
+            else:
+                body = stripped.strip()
+                if body:
+                    current_lines.append(body)
+
+    # Flush the last section
+    if current_url and current_lines:
+        sections.append((current_url, " ".join(current_lines)))
+
+    if not sections:
+        raise ValueError("No URL-delimited sections found in the TXT file.")
+
+    # --- Build chunks, deduplicating by content hash ---------------------
+    # Two consecutive scrape passes of the same URL produce identical text.
+    # We use a (url, content_hash) key so repeated blocks are skipped
+    # before they even become chunk_ids, without touching the jsonl.
+    seen_url_hashes = set()
+    rows = []
+
+    for url, body in sections:
+        slug = re.sub(r"[^a-z0-9]+", "_", url.lower()).strip("_")[:60]
+        content_hash = hashlib.md5(body.encode()).hexdigest()[:8]
+        dedup_key = (url, content_hash)
+
+        if dedup_key in seen_url_hashes:
+            continue
+        seen_url_hashes.add(dedup_key)
+
+        for chunk_idx, chunk in enumerate(_chunk_text(body)):
+            if not chunk.strip():
+                continue
+            rows.append({
+                # Include content_hash in the chunk_id so re-uploading a
+                # revised version of the same URL produces new IDs and
+                # gets indexed, rather than being silently skipped.
+                "chunk_id": f"txt_{slug}_{content_hash}_{chunk_idx}",
+                "url": url,
+                "text": chunk,
+            })
+
+    if not rows:
+        raise ValueError("No usable text chunks could be extracted from the TXT file.")
+
+    # --- Append only genuinely new chunks to the jsonl -------------------
+    existing_ids = _load_existing_ids()
+    new_records_added = 0
+
+    os.makedirs(os.path.dirname(JSONL_FILE), exist_ok=True)
+    with open(JSONL_FILE, "a", encoding="utf-8") as f:
+        for row in rows:
+            if row["chunk_id"] not in existing_ids:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+                existing_ids.add(row["chunk_id"])
+                new_records_added += 1
+
+    if new_records_added > 0 and rebuild_index:
+        _clear_vector_index()
+        _rebuild_vector_index()
+
+    return new_records_added
 
 
 def import_from_pdf(input_pdf_path, rebuild_index=True):
     """
-    Extracts text from the uploaded PDF, chunks it, and APPENDS
-    it to cleaned_data.jsonl, and optionally triggers a rebuild.
+    Extracts text from the uploaded PDF (OCR fallback for scanned pages),
+    chunks it, and APPENDS to cleaned_data.jsonl.
     """
     if not os.path.exists(input_pdf_path):
         raise FileNotFoundError(f"Uploaded PDF {input_pdf_path} not found.")
 
-    # Imported here rather than at module level so manage_data.py doesn't
-    # require pdfplumber/pytesseract/pdf2image (and the tesseract/poppler
-    # system binaries) unless a PDF is actually uploaded.
     import pdfplumber
     import pytesseract
     from pdf2image import convert_from_path
@@ -199,20 +292,6 @@ def import_from_pdf(input_pdf_path, rebuild_index=True):
     min_chars_before_ocr_fallback = 20
     ocr_dpi = 300
     ocr_lang = "eng"
-    chunk_size = 500
-    chunk_overlap = 50
-
-    def chunk_text(text, chunk_size=chunk_size, overlap=chunk_overlap):
-        text = re.sub(r"\s+", " ", text).strip()
-        chunks = []
-        start = 0
-        while start < len(text):
-            end = start + chunk_size
-            chunks.append(text[start:end])
-            start = end - overlap
-            if end >= len(text):
-                break
-        return chunks
 
     slug = re.sub(
         r"[^a-z0-9]+", "_",
@@ -220,33 +299,22 @@ def import_from_pdf(input_pdf_path, rebuild_index=True):
     ).strip("_")
 
     rows = []
-    ocr_page_images = None  # lazily converted once, only if actually needed
+    ocr_page_images = None
 
     with pdfplumber.open(input_pdf_path) as pdf:
         for page_index, page in enumerate(pdf.pages):
             text = page.extract_text() or ""
 
             if len(text.strip()) < min_chars_before_ocr_fallback:
-                # Likely a scanned page with no usable text layer.
-                # Convert the WHOLE pdf to images exactly once, the first
-                # time OCR is actually needed -- pdf2image/Poppler has no
-                # way to keep a document "open" across calls, so calling
-                # convert_from_path() per page (even with first_page/
-                # last_page set) re-parses the entire PDF from scratch on
-                # every page that needs OCR. For a long scanned PDF that's
-                # O(n^2) work and looks like an infinite hang. Doing it
-                # once up front and indexing into the result is O(n).
                 if ocr_page_images is None:
                     ocr_page_images = convert_from_path(input_pdf_path, dpi=ocr_dpi)
                 if page_index < len(ocr_page_images):
-                    text = pytesseract.image_to_string(
-                        ocr_page_images[page_index], lang=ocr_lang
-                    )
+                    text = pytesseract.image_to_string(ocr_page_images[page_index], lang=ocr_lang)
 
             if not text.strip():
                 continue
 
-            for chunk_idx, chunk in enumerate(chunk_text(text)):
+            for chunk_idx, chunk in enumerate(_chunk_text(text)):
                 if not chunk.strip():
                     continue
                 rows.append({
@@ -258,20 +326,9 @@ def import_from_pdf(input_pdf_path, rebuild_index=True):
     if not rows:
         raise ValueError("No text could be extracted from the uploaded PDF.")
 
-    # Load existing chunk_ids to avoid duplicates when appending
-    existing_ids = set()
-    if os.path.exists(JSONL_FILE):
-        with open(JSONL_FILE, 'r', encoding='utf-8') as f:
-            for line in f:
-                try:
-                    data = json.loads(line)
-                    if "chunk_id" in data:
-                        existing_ids.add(data["chunk_id"])
-                except json.JSONDecodeError:
-                    pass
-
+    existing_ids = _load_existing_ids()
     new_records_added = 0
-    with open(JSONL_FILE, 'a', encoding='utf-8') as f:
+    with open(JSONL_FILE, "a", encoding="utf-8") as f:
         for row in rows:
             if row["chunk_id"] not in existing_ids:
                 f.write(json.dumps(row) + "\n")
@@ -287,17 +344,15 @@ def import_from_pdf(input_pdf_path, rebuild_index=True):
 
 def import_from_csv(input_csv_path, rebuild_index=True):
     """
-    Reads an uploaded CSV, APPENDS to cleaned_data.jsonl,
-    and optionally triggers a rebuild.
+    Reads an uploaded CSV with columns chunk_id, url, text,
+    and APPENDS new rows to cleaned_data.jsonl.
     """
     if not os.path.exists(input_csv_path):
         raise FileNotFoundError(f"Uploaded CSV {input_csv_path} not found.")
 
     rows = []
-    with open(input_csv_path, 'r', encoding='utf-8', newline='') as f:
+    with open(input_csv_path, "r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
-
-        # Accept header names case-insensitively (e.g. "Chunk_ID" or "URL").
         fieldnames = {(name or "").strip().lower(): name for name in (reader.fieldnames or [])}
         required = {"chunk_id", "url", "text"}
         missing = required - fieldnames.keys()
@@ -314,20 +369,9 @@ def import_from_csv(input_csv_path, rebuild_index=True):
     if not rows:
         raise ValueError("CSV contained no rows.")
 
-    # Load existing chunk_ids to avoid duplicates when appending
-    existing_ids = set()
-    if os.path.exists(JSONL_FILE):
-        with open(JSONL_FILE, 'r', encoding='utf-8') as f:
-            for line in f:
-                try:
-                    data = json.loads(line)
-                    if "chunk_id" in data:
-                        existing_ids.add(data["chunk_id"])
-                except json.JSONDecodeError:
-                    pass
-
+    existing_ids = _load_existing_ids()
     new_records_added = 0
-    with open(JSONL_FILE, 'a', encoding='utf-8') as f:
+    with open(JSONL_FILE, "a", encoding="utf-8") as f:
         for row in rows:
             if row["chunk_id"] not in existing_ids:
                 f.write(json.dumps(row) + "\n")
