@@ -7,7 +7,7 @@ from collections import deque
 import time
 
 START_URL = "https://dubaigolf.com/"
-MAX_PAGES = 500  # Limit for demonstration and time constraints
+MAX_PAGES = 600  # Limit for demonstration and time constraints
 OUTPUT_FILE = "raw_data.jsonl"
 
 def is_valid_url(url, base_domain):
