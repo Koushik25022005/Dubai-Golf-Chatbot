@@ -44,15 +44,6 @@ else:
         st.session_state["admin_authenticated"] = False
         st.rerun()
 
-    # ── Info banner ────────────────────────────────────────────────────────
-    st.info(
-        "**Deployment note:** This app runs on Streamlit Community Cloud, which "
-        "does not have enough resources to rebuild the vector index. "
-        "Uploading files here safely appends them to the knowledge base. "
-        "To apply changes to the chatbot, follow the rebuild steps shown after upload.",
-        icon="ℹ️",
-    )
-
     st.divider()
 
     # ── Section 1 : Download ───────────────────────────────────────────────
@@ -84,11 +75,13 @@ else:
     st.subheader("2. Upload to Knowledge Base")
     st.write(
         "Upload **SQLite DB, PDF, CSV, or TXT** files. "
-        "New records are appended to the knowledge base. "
-        "The vector index is **not** rebuilt here — follow the steps below after uploading."
+        "New records are appended to the knowledge base and the vector index "
+        "is automatically rebuilt so changes are live immediately."
     )
-    st.caption("✅ Safe to upload: single menus, FAQs, pricing sheets, small docs.  "
-               "❌ Do not upload: full raw website scrapes (100k+ chunks).")
+    st.caption(
+        "✅ Safe to upload: single menus, FAQs, pricing sheets, small docs.  "
+        "❌ Do not upload: full raw website scrapes (100k+ chunks)."
+    )
 
     uploaded_files = st.file_uploader(
         "Upload files",
@@ -97,7 +90,7 @@ else:
     )
 
     if uploaded_files:
-        if st.button("Apply Changes"):
+        if st.button("Apply Changes & Rebuild Index"):
             results = []
             errors = []
 
@@ -112,18 +105,20 @@ else:
                     f.write(uploaded_file.getbuffer())
 
                 try:
-                    # rebuild_index=False everywhere -- the cloud cannot
-                    # run the embedding pipeline. Rebuild is done locally.
-                    if ext in (".db", ".sqlite"):
-                        n = import_from_sqlite(temp_path, rebuild_index=False)
-                    elif ext == ".pdf":
-                        n = import_from_pdf(temp_path, rebuild_index=False)
-                    elif ext == ".csv":
-                        n = import_from_csv(temp_path, rebuild_index=False)
-                    elif ext == ".txt":
-                        n = import_from_txt(temp_path, rebuild_index=False)
-                    else:
-                        raise ValueError(f"Unsupported file type: {ext}")
+                    with st.spinner(
+                        f"Processing **{original_name}** and rebuilding vector index… "
+                        "This may take a minute."
+                    ):
+                        if ext in (".db", ".sqlite"):
+                            n = import_from_sqlite(temp_path, rebuild_index=True)
+                        elif ext == ".pdf":
+                            n = import_from_pdf(temp_path, rebuild_index=True)
+                        elif ext == ".csv":
+                            n = import_from_csv(temp_path, rebuild_index=True)
+                        elif ext == ".txt":
+                            n = import_from_txt(temp_path, rebuild_index=True)
+                        else:
+                            raise ValueError(f"Unsupported file type: {ext}")
 
                     results.append(f"**{original_name}** — {n} new chunk(s) added.")
                 except Exception as e:
@@ -132,42 +127,18 @@ else:
                     if os.path.exists(temp_path):
                         os.remove(temp_path)
 
-            # Show per-file results
+            # ── Show per-file results ──────────────────────────────────────
             if results:
-                st.success("Files processed successfully:")
+                st.success("✅ Files processed and vector index rebuilt successfully:")
                 for r in results:
                     st.markdown(f"- {r}")
+                st.info(
+                    "The chatbot will use the updated knowledge base on its next query. "
+                    "No reboot required.",
+                    icon="🚀",
+                )
 
             if errors:
                 st.error("Some files could not be processed:")
                 for e in errors:
                     st.markdown(f"- {e}")
-
-            # Rebuild instructions
-            if results:
-                st.divider()
-                st.subheader("⚙️ Next Steps — Rebuild the Vector Index")
-                st.write(
-                    "The chatbot won't see the new content until the vector index "
-                    "is rebuilt and deployed. Run these commands on your local machine:"
-                )
-                st.code(
-                    """# 1. Pull the latest knowledge base from the cloud
-#    (download the SQLite DB above, then run:)
-python knowledge_base/manage_data.py  # or your local import script
-
-# 2. Rebuild the vector index locally
-rm -rf knowledge_base/chroma_db
-rm -f  knowledge_base/bm25_state.pkl
-python knowledge_base/vector_db_onnx_bm25.py
-
-# 3. Push the new index to GitHub Releases and redeploy
-#    (or push chroma_db directly to your repo if it's small enough)
-""",
-                    language="bash",
-                )
-                st.info(
-                    "After rebuilding, go to **share.streamlit.io → your app → "
-                    "⋮ → Reboot app** to pick up the new index.",
-                    icon="🔄",
-                )
