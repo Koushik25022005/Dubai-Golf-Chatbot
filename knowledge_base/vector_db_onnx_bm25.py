@@ -29,7 +29,7 @@ from chromadb.utils import embedding_functions
 from rank_bm25 import BM25Okapi
 
 DB_DIR = os.path.join(os.path.dirname(__file__), "chroma_db")
-DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data_ingestion", "cleaned_data.jsonl")
+DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data_ingestion", "dubaigolf.txt")
 BM25_STATE_PATH = os.path.join(os.path.dirname(__file__), "bm25_state.pkl")
 
 
@@ -85,15 +85,14 @@ class HybridSearchKnowledgeBase:
             return
 
         documents, metadatas, ids = [], [], []
-        print("Reading cleaned data...")
+        print("Reading text data...")
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                data = json.loads(line)
-                chunks = chunk_text(data["text"])
-                for i, chunk in enumerate(chunks):
-                    documents.append(chunk)
-                    metadatas.append({"url": data["url"]})
-                    ids.append(f"{data['chunk_id']}_{i}")
+            text_content = f.read()
+            chunks = chunk_text(text_content)
+            for i, chunk in enumerate(chunks):
+                documents.append(chunk)
+                metadatas.append({"url": "dubaigolf.txt"})
+                ids.append(f"chunk_{i}")
 
         if not documents:
             print("No documents to index.")
