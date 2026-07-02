@@ -29,7 +29,7 @@ from chromadb.utils import embedding_functions
 from rank_bm25 import BM25Okapi
 
 DB_DIR = os.path.join(os.path.dirname(__file__), "chroma_db")
-DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data_ingestion", "dubaigolf.txt")
+DATA_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data_ingestion", "cleaned_data.jsonl")
 BM25_STATE_PATH = os.path.join(os.path.dirname(__file__), "bm25_state.pkl")
 
 
