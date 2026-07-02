@@ -187,7 +187,7 @@ if prompt := st.chat_input("How may I help you ?"):
                     )
             response_text = response.choices[0].message.content
         except Exception as e:
-            response_text = f"❌ Error communicating with OpenRouter: {e}"
+            response_text = f"❌ Error communicating with the LLMServiceProvider: {e}"
 
         # Display the result
         message_placeholder.markdown(response_text)
@@ -198,7 +198,7 @@ if prompt := st.chat_input("How may I help you ?"):
         # Format the response based on the selected style
         if response_style == "Brief":
             # Just take the first bit of the context for a brief answer
-            brief_context = context[:200] + "..." if len(context) > 200 else context
+            brief_context = context[:500] + "..." if len(context) > 500 else context
             response_text = f"**[{model_choice} - Brief]**\n\n{brief_context}"
         else:
             response_text = f"**[{model_choice} - Detailed]**\n\nBased on the retrieved context:\n\n{context}"
